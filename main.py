@@ -10,8 +10,50 @@ from Maix import FPIOA,GPIO,I2S,utils
 import audio
 import utime
 
-time_flag=True
-invert_flag=True
+# 应用状态定义
+STATE_MENU = 0b0000
+STATE_DETAIL = 0b0001
+STATE_CAMERA = 0b0010
+STATE_INPUT = 0b0011
+
+# 操作标志
+OP_PREV = 0b00001000
+OP_NEXT = 0b00010000
+OP_RANDOM = 0b00100000
+OP_FORM = 0b01000000
+OP_CHOOSE = 0b10000000
+
+
+# 掩码常量
+SCREEN_MASK = 0b00000011    # 低2位：屏幕状态
+INVERT_MASK = 0b00000100    # 第2位：闪烁标志
+OPS_MASK = 0b11111000       # 高5位：操作标志
+
+
+# 单个状态变量
+app_state = STATE_MENU  # 初始化
+time_flag = True
+
+# 辅助函数
+def get_screen():
+    return app_state & SCREEN_MASK
+
+def set_screen(state):
+    global app_state
+    app_state = (app_state & ~SCREEN_MASK) | (state & SCREEN_MASK)
+
+def has_operation(op):
+    return (app_state & op) != 0
+
+def clear_operation(op):
+    global app_state
+    app_state &= ~op
+
+def set_operation(op):
+    global app_state
+    app_state |= op
+
+
 
 #def lcd_show_except(e):
     #import uio
@@ -35,11 +77,11 @@ def init_uart():
     fm.register(35, fm.fpioa.I2S0_SCLK, force=True)
     fm.register(33, fm.fpioa.I2S0_WS, force=True)
 
-    fm.register(15, fm.fpioa.GPIOHS0, force=True)
-    fm.register(6, fm.fpioa.GPIOHS1, force=True)
-    fm.register(7, fm.fpioa.GPIOHS2, force=True)
+    fm.register(7, fm.fpioa.GPIOHS0, force=True)
+    fm.register(15, fm.fpioa.GPIOHS1, force=True)
+    fm.register(9, fm.fpioa.GPIOHS2, force=True)
     fm.register(8, fm.fpioa.GPIOHS3, force=True)
-    fm.register(9, fm.fpioa.GPIOHS4, force=True)
+    fm.register(10, fm.fpioa.GPIOHS4, force=True)
 
     uart = UART(UART.UART1, 115200, 8, 0, 0, timeout=1000, read_buf_len=256)
     return uart
@@ -51,8 +93,8 @@ def draw_rounded_rectangle(img, x, y, w, h, r, color, thickness=1):
     img.draw_line(x + w - 1, y + r, x + w - 1, y + h - r - 1, color=color, thickness=thickness)  # Right
 
 def invert_color(timer):
-    global invert_flag
-    invert_flag=True
+    global app_state
+    app_state |= INVERT_MASK
 
 def call_timer(timer):
     global time_flag
@@ -60,7 +102,8 @@ def call_timer(timer):
 
 def main(lcd_rotation=0):
     global time_flag
-    global invert_flag
+    global app_state
+    app_state = STATE_MENU
     input_size = (224, 224)
 
     sensor.reset()
@@ -90,7 +133,7 @@ def main(lcd_rotation=0):
 
 
     labels=['abra', 'aerodactyl', 'alakazam', 'arbok', 'arcanine', 'articuno', 'beedrill', 'bellsprout', 'blastoise', 'bulbasaur', 'butterfree', 'caterpie', 'chansey', 'charizard', 'charmander', 'charmeleon', 'clefable', 'clefairy', 'cloyster', 'cubone', 'dewgong', 'diglett', 'ditto', 'dodrio', 'doduo', 'dragonair', 'dragonite', 'dratini', 'drowzee', 'dugtrio', 'eevee', 'ekans', 'electabuzz', 'electrode', 'exeggcute', 'exeggutor', 'farfetchd', 'fearow', 'flareon', 'gastly', 'gengar', 'geodude', 'gloom', 'golbat', 'goldeen', 'golduck', 'golem', 'graveler', 'grimer', 'growlithe', 'gyarados', 'haunter', 'hitmonchan', 'hitmonlee', 'horsea', 'hypno', 'ivysaur', 'jigglypuff', 'jolteon', 'jynx', 'kabuto', 'kabutops', 'kadabra', 'kakuna', 'kangaskhan', 'kingler', 'koffing', 'krabby', 'lapras', 'lickitung', 'machamp', 'machoke', 'machop', 'magikarp', 'magmar', 'magnemite', 'magneton', 'mankey', 'marowak', 'meowth', 'metapod', 'mew', 'mewtwo', 'moltres', 'mr-mime', 'muk', 'nidoking', 'nidoqueen', 'nidoran-f', 'nidoran-m', 'nidorina', 'nidorino', 'ninetales', 'oddish', 'omanyte', 'omastar', 'onix', 'paras', 'parasect', 'persian', 'pidgeot', 'pidgeotto', 'pidgey', 'pikachu', 'pinsir', 'poliwag', 'poliwhirl', 'poliwrath', 'ponyta', 'porygon', 'primeape', 'psyduck', 'raichu', 'rapidash', 'raticate', 'rattata', 'rhydon', 'rhyhorn', 'sandshrew', 'sandslash', 'scyther', 'seadra', 'seaking', 'seel', 'shellder', 'slowbro', 'slowpoke', 'snorlax', 'spearow', 'squirtle', 'starmie', 'staryu', 'tangela', 'tauros', 'tentacool', 'tentacruel', 'vaporeon', 'venomoth', 'venonat', 'venusaur', 'victreebel', 'vileplume', 'voltorb', 'vulpix', 'wartortle', 'weedle', 'weepinbell', 'weezing', 'wigglytuff', 'zapdos', 'zubat']
-    pokemon_linkname=['bulbasaur', 'ivysaur', 'venusaur', 'charmander', 'charmeleon', 'charizard', 'squirtle', 'wartortle', 'blastoise', 'caterpie', 'metapod', 'butterfree', 'weedle', 'kakuna', 'beedrill', 'pidgey', 'pidgeotto', 'pidgeot', 'rattata', 'raticate', 'spearow', 'fearow', 'ekans', 'arbok', 'pikachu', 'raichu', 'sandshrew', 'sandslash', 'nidoran-f', 'nidorina', 'nidoqueen', 'nidoran-m', 'nidorino', 'nidoking', 'clefairy', 'clefable', 'vulpix', 'ninetales', 'jigglypuff', 'wigglytuff', 'zubat', 'golbat', 'oddish', 'gloom', 'vileplume', 'paras', 'parasect', 'venonat', 'venomoth', 'diglett', 'dugtrio', 'meowth', 'persian', 'psyduck', 'golduck', 'mankey', 'primeape', 'growlithe', 'arcanine', 'poliwag', 'poliwhirl', 'poliwrath', 'abra', 'kadabra', 'alakazam', 'machop', 'machoke', 'machamp', 'bellsprout', 'weepinbell', 'victreebel', 'tentacool', 'tentacruel', 'geodude', 'graveler', 'golem', 'ponyta', 'rapidash', 'slowpoke', 'slowbro', 'magnemite', 'magneton', 'farfetchd', 'doduo', 'dodrio', 'seel', 'dewgong', 'grimer', 'muk', 'shellder', 'cloyster', 'gastly', 'haunter', 'gengar', 'onix', 'drowzee', 'hypno', 'krabby', 'kingler', 'voltorb', 'electrode', 'exeggcute', 'exeggutor', 'cubone', 'marowak', 'hitmonlee', 'hitmonchan', 'lickitung', 'koffing', 'weezing', 'rhyhorn', 'rhydon', 'chansey', 'tangela', 'kangaskhan', 'horsea', 'seadra', 'goldeen', 'seaking', 'staryu', 'starmie', 'mr-mime', 'scyther', 'jynx', 'electabuzz', 'magmar', 'pinsir', 'tauros', 'magikarp', 'gyarados', 'lapras', 'ditto', 'eevee', 'vaporeon', 'jolteon', 'flareon', 'porygon', 'omanyte', 'omastar', 'kabuto', 'kabutops', 'aerodactyl', 'snorlax', 'articuno', 'zapdos', 'moltres', 'dratini', 'dragonair', 'dragonite', 'mewtwo', 'mew', 'chikorita', 'bayleef', 'meganium', 'cyndaquil', 'quilava', 'typhlosion', 'totodile', 'croconaw', 'feraligatr', 'sentret', 'furret', 'hoothoot', 'noctowl', 'ledyba', 'ledian', 'spinarak', 'ariados', 'crobat', 'chinchou', 'lanturn', 'pichu', 'cleffa', 'igglybuff', 'togepi', 'togetic', 'natu', 'xatu', 'mareep', 'flaaffy', 'ampharos', 'bellossom', 'marill', 'azumarill', 'sudowoodo', 'politoed', 'hoppip', 'skiploom', 'jumpluff', 'aipom', 'sunkern', 'sunflora', 'yanma', 'wooper', 'quagsire', 'espeon', 'umbreon', 'murkrow', 'slowking', 'misdreavus', 'unown', 'wobbuffet', 'girafarig', 'pineco', 'forretress', 'dunsparce', 'gligar', 'steelix', 'snubbull', 'granbull', 'qwilfish', 'scizor', 'shuckle', 'heracross', 'sneasel', 'teddiursa', 'ursaring', 'slugma', 'magcargo', 'swinub', 'piloswine', 'corsola', 'remoraid', 'octillery', 'delibird', 'mantine', 'skarmory', 'houndour', 'houndoom', 'kingdra', 'phanpy', 'donphan', 'porygon2', 'stantler', 'smeargle', 'tyrogue', 'hitmontop', 'smoochum', 'elekid', 'magby', 'miltank', 'blissey', 'raikou', 'entei', 'suicune', 'larvitar', 'pupitar', 'tyranitar', 'lugia', 'ho-oh', 'celebi', 'treecko', 'grovyle', 'sceptile', 'torchic', 'combusken', 'blaziken', 'mudkip', 'marshtomp', 'swampert', 'poochyena', 'mightyena', 'zigzagoon', 'linoone', 'wurmple', 'silcoon', 'beautifly', 'cascoon', 'dustox', 'lotad', 'lombre', 'ludicolo', 'seedot', 'nuzleaf', 'shiftry', 'taillow', 'swellow', 'wingull', 'pelipper', 'ralts', 'kirlia', 'gardevoir', 'surskit', 'masquerain', 'shroomish', 'breloom', 'slakoth', 'vigoroth', 'slaking', 'nincada', 'ninjask', 'shedinja', 'whismur', 'loudred', 'exploud', 'makuhita', 'hariyama', 'azurill', 'nosepass', 'skitty', 'delcatty', 'sableye', 'mawile', 'aron', 'lairon', 'aggron', 'meditite', 'medicham', 'electrike', 'manectric', 'plusle', 'minun', 'volbeat', 'illumise', 'roselia', 'gulpin', 'swalot', 'carvanha', 'sharpedo', 'wailmer', 'wailord', 'numel', 'camerupt', 'torkoal', 'spoink', 'grumpig', 'spinda', 'trapinch', 'vibrava', 'flygon', 'cacnea', 'cacturne', 'swablu', 'altaria', 'zangoose', 'seviper', 'lunatone', 'solrock', 'barboach', 'whiscash', 'corphish', 'crawdaunt', 'baltoy', 'claydol', 'lileep', 'cradily', 'anorith', 'armaldo', 'feebas', 'milotic', 'castform', 'kecleon', 'shuppet', 'banette', 'duskull', 'dusclops', 'tropius', 'chimecho', 'absol', 'wynaut', 'snorunt', 'glalie', 'spheal', 'sealeo', 'walrein', 'clamperl', 'huntail', 'gorebyss', 'relicanth', 'luvdisc', 'bagon', 'shelgon', 'salamence', 'beldum', 'metang', 'metagross', 'regirock', 'regice', 'registeel', 'latias', 'latios', 'kyogre', 'groudon', 'rayquaza', 'jirachi', 'deoxys', 'turtwig', 'grotle', 'torterra', 'chimchar', 'monferno', 'infernape', 'piplup', 'prinplup', 'empoleon', 'starly', 'staravia', 'staraptor', 'bidoof', 'bibarel', 'kricketot', 'kricketune', 'shinx', 'luxio', 'luxray', 'budew', 'roserade', 'cranidos', 'rampardos', 'shieldon', 'bastiodon', 'burmy', 'wormadam', 'mothim', 'combee', 'vespiquen', 'pachirisu', 'buizel', 'floatzel', 'cherubi', 'cherrim', 'shellos', 'gastrodon', 'ambipom', 'drifloon', 'drifblim', 'buneary', 'lopunny', 'mismagius', 'honchkrow', 'glameow', 'purugly', 'chingling', 'stunky', 'skuntank', 'bronzor', 'bronzong', 'bonsly', 'mime-jr', 'happiny', 'chatot', 'spiritomb', 'gible', 'gabite', 'garchomp', 'munchlax', 'riolu', 'lucario', 'hippopotas', 'hippowdon', 'skorupi', 'drapion', 'croagunk', 'toxicroak', 'carnivine', 'finneon', 'lumineon', 'mantyke', 'snover', 'abomasnow', 'weavile', 'magnezone', 'lickilicky', 'rhyperior', 'tangrowth', 'electivire', 'magmortar', 'togekiss', 'yanmega', 'leafeon', 'glaceon', 'gliscor', 'mamoswine', 'porygon-z', 'gallade', 'probopass', 'dusknoir', 'froslass', 'rotom', 'uxie', 'mesprit', 'azelf', 'dialga', 'palkia', 'heatran', 'regigigas', 'giratina', 'cresselia', 'phione', 'manaphy', 'darkrai', 'shaymin', 'arceus', 'victini', 'snivy', 'servine', 'serperior', 'tepig', 'pignite', 'emboar', 'oshawott', 'dewott', 'samurott', 'patrat', 'watchog', 'lillipup', 'herdier', 'stoutland', 'purrloin', 'liepard', 'pansage', 'simisage', 'pansear', 'simisear', 'panpour', 'simipour', 'munna', 'musharna', 'pidove', 'tranquill', 'unfezant', 'blitzle', 'zebstrika', 'roggenrola', 'boldore', 'gigalith', 'woobat', 'swoobat', 'drilbur', 'excadrill', 'audino', 'timburr', 'gurdurr', 'conkeldurr', 'tympole', 'palpitoad', 'seismitoad', 'throh', 'sawk', 'sewaddle', 'swadloon', 'leavanny', 'venipede', 'whirlipede', 'scolipede', 'cottonee', 'whimsicott', 'petilil', 'lilligant', 'basculin', 'sandile', 'krokorok', 'krookodile', 'darumaka', 'darmanitan', 'maractus', 'dwebble', 'crustle', 'scraggy', 'scrafty', 'sigilyph', 'yamask', 'cofagrigus', 'tirtouga', 'carracosta', 'archen', 'archeops', 'trubbish', 'garbodor', 'zorua', 'zoroark', 'minccino', 'cinccino', 'gothita', 'gothorita', 'gothitelle', 'solosis', 'duosion', 'reuniclus', 'ducklett', 'swanna', 'vanillite', 'vanillish', 'vanilluxe', 'deerling', 'sawsbuck', 'emolga', 'karrablast', 'escavalier', 'foongus', 'amoonguss', 'frillish', 'jellicent', 'alomomola', 'joltik', 'galvantula', 'ferroseed', 'ferrothorn', 'klink', 'klang', 'klinklang', 'tynamo', 'eelektrik', 'eelektross', 'elgyem', 'beheeyem', 'litwick', 'lampent', 'chandelure', 'axew', 'fraxure', 'haxorus', 'cubchoo', 'beartic', 'cryogonal', 'shelmet', 'accelgor', 'stunfisk', 'mienfoo', 'mienshao', 'druddigon', 'golett', 'golurk', 'pawniard', 'bisharp', 'bouffalant', 'rufflet', 'braviary', 'vullaby', 'mandibuzz', 'heatmor', 'durant', 'deino', 'zweilous', 'hydreigon', 'larvesta', 'volcarona', 'cobalion', 'terrakion', 'virizion', 'tornadus', 'thundurus', 'reshiram', 'zekrom', 'landorus', 'kyurem', 'keldeo', 'meloetta', 'genesect', 'chespin', 'quilladin', 'chesnaught', 'fennekin', 'braixen', 'delphox', 'froakie', 'frogadier', 'greninja', 'bunnelby', 'diggersby', 'fletchling', 'fletchinder', 'talonflame', 'scatterbug', 'spewpa', 'vivillon', 'litleo', 'pyroar', 'flabebe', 'floette', 'florges', 'skiddo', 'gogoat', 'pancham', 'pangoro', 'furfrou', 'espurr', 'meowstic', 'honedge', 'doublade', 'aegislash', 'spritzee', 'aromatisse', 'swirlix', 'slurpuff', 'inkay', 'malamar', 'binacle', 'barbaracle', 'skrelp', 'dragalge', 'clauncher', 'clawitzer', 'helioptile', 'heliolisk', 'tyrunt', 'tyrantrum', 'amaura', 'aurorus', 'sylveon', 'hawlucha', 'dedenne', 'carbink', 'goomy', 'sliggoo', 'goodra', 'klefki', 'phantump', 'trevenant', 'pumpkaboo', 'gourgeist', 'bergmite', 'avalugg', 'noibat', 'noivern', 'xerneas', 'yveltal', 'zygarde', 'diancie', 'hoopa', 'volcanion', 'rowlet', 'dartrix', 'decidueye', 'litten', 'torracat', 'incineroar', 'popplio', 'brionne', 'primarina', 'pikipek', 'trumbeak', 'toucannon', 'yungoos', 'gumshoos', 'grubbin', 'charjabug', 'vikavolt', 'crabrawler', 'crabominable', 'oricorio', 'cutiefly', 'ribombee', 'rockruff', 'lycanroc', 'wishiwashi', 'mareanie', 'toxapex', 'mudbray', 'mudsdale', 'dewpider', 'araquanid', 'fomantis', 'lurantis', 'morelull', 'shiinotic', 'salandit', 'salazzle', 'stufful', 'bewear', 'bounsweet', 'steenee', 'tsareena', 'comfey', 'oranguru', 'passimian', 'wimpod', 'golisopod', 'sandygast', 'palossand', 'pyukumuku', 'type-null', 'silvally', 'minior', 'komala', 'turtonator', 'togedemaru', 'mimikyu', 'bruxish', 'drampa', 'dhelmise', 'jangmo-o', 'hakamo-o', 'kommo-o', 'tapu-koko', 'tapu-lele', 'tapu-bulu', 'tapu-fini', 'cosmog', 'cosmoem', 'solgaleo', 'lunala', 'nihilego', 'buzzwole', 'pheromosa', 'xurkitree', 'celesteela', 'kartana', 'guzzlord', 'necrozma', 'magearna', 'marshadow', 'poipole', 'naganadel', 'stakataka', 'blacephalon', 'zeraora', 'meltan', 'melmetal', 'grookey', 'thwackey', 'rillaboom', 'scorbunny', 'raboot', 'cinderace', 'sobble', 'drizzile', 'inteleon', 'skwovet', 'greedent', 'rookidee', 'corvisquire', 'corviknight', 'blipbug', 'dottler', 'orbeetle', 'nickit', 'thievul', 'gossifleur', 'eldegoss', 'wooloo', 'dubwool', 'chewtle', 'drednaw', 'yamper', 'boltund', 'rolycoly', 'carkol', 'coalossal', 'applin', 'flapple', 'appletun', 'silicobra', 'sandaconda', 'cramorant', 'arrokuda', 'barraskewda', 'toxel', 'toxtricity', 'sizzlipede', 'centiskorch', 'clobbopus', 'grapploct', 'sinistea', 'polteageist', 'hatenna', 'hattrem', 'hatterene', 'impidimp', 'morgrem', 'grimmsnarl', 'obstagoon', 'perrserker', 'cursola', 'sirfetchd', 'mr-rime', 'runerigus', 'milcery', 'alcremie', 'falinks', 'pincurchin', 'snom', 'frosmoth', 'stonjourner', 'eiscue', 'indeedee', 'morpeko', 'cufant', 'copperajah', 'dracozolt', 'arctozolt', 'dracovish', 'arctovish', 'duraludon', 'dreepy', 'drakloak', 'dragapult', 'zacian', 'zamazenta', 'eternatus', 'kubfu', 'urshifu', 'zarude', 'regieleki', 'regidrago', 'glastrier', 'spectrier', 'calyrex', 'wyrdeer', 'kleavor', 'ursaluna', 'basculegion', 'sneasler', 'overqwil', 'enamorus', 'sprigatito', 'floragato', 'meowscarada', 'fuecoco', 'crocalor', 'skeledirge', 'quaxly', 'quaxwell', 'quaquaval', 'lechonk', 'oinkologne', 'tarountula', 'spidops', 'nymble', 'lokix', 'pawmi', 'pawmo', 'pawmot', 'tandemaus', 'maushold', 'fidough', 'dachsbun', 'smoliv', 'dolliv', 'arboliva', 'squawkabilly', 'nacli', 'naclstack', 'garganacl', 'charcadet', 'armarouge', 'ceruledge', 'tadbulb', 'bellibolt', 'wattrel', 'kilowattrel', 'maschiff', 'mabosstiff', 'shroodle', 'grafaiai', 'bramblin', 'brambleghast', 'toedscool', 'toedscruel', 'klawf', 'capsakid', 'scovillain', 'rellor', 'rabsca', 'flittle', 'espathra', 'tinkatink', 'tinkatuff', 'tinkaton', 'wiglett', 'wugtrio', 'bombirdier', 'finizen', 'palafin', 'varoom', 'revavroom', 'cyclizar', 'orthworm', 'glimmet', 'glimmora', 'greavard', 'houndstone', 'flamigo', 'cetoddle', 'cetitan', 'veluza', 'dondozo', 'tatsugiri', 'annihilape', 'clodsire', 'farigiraf', 'dudunsparce', 'kingambit', 'great-tusk', 'scream-tail', 'brute-bonnet', 'flutter-mane', 'slither-wing', 'sandy-shocks', 'iron-treads', 'iron-bundle', 'iron-hands', 'iron-jugulis', 'iron-moth', 'iron-thorns', 'frigibax', 'arctibax', 'baxcalibur', 'gimmighoul', 'gholdengo', 'wo-chien', 'chien-pao', 'ting-lu', 'chi-yu', 'roaring-moon', 'iron-valiant', 'koraidon', 'miraidon', 'walking-wake', 'iron-leaves', 'dipplin', 'poltchageist', 'sinistcha', 'okidogi', 'munkidori', 'fezandipiti', 'ogerpon', 'archaludon', 'hydrapple', 'gouging-fire', 'raging-bolt', 'iron-boulder', 'iron-crown', 'terapagos', 'pecharunt']
+    pokemon_linkname=['bulbasaur', 'ivysaur', 'venusaur', 'charmander', 'charmeleon', 'charizard', 'squirtle', 'wartortle', 'blastoise', 'caterpie', 'metapod', 'butterfree', 'weedle', 'kakuna', 'beedrill', 'pidgey', 'pidgeotto', 'pidgeot', 'rattata', 'raticate', 'spearow', 'fearow', 'ekans', 'arbok', 'pikachu', 'raichu', 'sandshrew', 'sandslash', 'nidoran-f', 'nidorina', 'nidoqueen', 'nidoran-m', 'nidorino', 'nidoking', 'clefairy', 'clefable', 'vulpix', 'ninetales', 'jigglypuff', 'wigglytuff', 'zubat', 'golbat', 'oddish', 'gloom', 'vileplume', 'paras', 'parasect', 'venonat', 'venomoth', 'diglett', 'dugtrio', 'meowth', 'persian', 'psyduck', 'golduck', 'mankey', 'primeape', 'growlithe', 'arcanine', 'poliwag', 'poliwhirl', 'poliwrath', 'abra', 'kadabra', 'alakazam', 'machop', 'machoke', 'machamp', 'bellsprout', 'weepinbell', 'victreebel', 'tentacool', 'tentacruel', 'geodude', 'graveler', 'golem', 'ponyta', 'rapidash', 'slowpoke', 'slowbro', 'magnemite', 'magneton', 'farfetchd', 'doduo', 'dodrio', 'seel', 'dewgong', 'grimer', 'muk', 'shellder', 'cloyster', 'gastly', 'haunter', 'gengar', 'onix', 'drowzee', 'hypno', 'krabby', 'kingler', 'voltorb', 'electrode', 'exeggcute', 'exeggutor', 'cubone', 'marowak', 'hitmonlee', 'hitmonchan', 'lickitung', 'koffing', 'weezing', 'rhyhorn', 'rhydon', 'chansey', 'tangela', 'kangaskhan', 'horsea', 'seadra', 'goldeen', 'seaking', 'staryu', 'starmie', 'mr-mime', 'scyther', 'jynx', 'electabuzz', 'magmar', 'pinsir', 'tauros', 'magikarp', 'gyarados', 'lapras', 'ditto', 'eevee', 'vaporeon', 'jolteon', 'flareon', 'porygon', 'omanyte', 'omastar', 'kabuto', 'kabutops', 'aerodactyl', 'snorlax', 'articuno', 'zapdos', 'moltres', 'dratini', 'dragonair', 'dragonite', 'mewtwo', 'mew', 'chikorita', 'bayleef', 'meganium', 'cyndaquil', 'quilava', 'typhlosion', 'totodile', 'croconaw', 'feraligatr', 'sentret', 'furret', 'hoothoot', 'noctowl', 'ledyba', 'ledian', 'spinarak', 'ariados', 'crobat', 'chinchou', 'lanturn', 'pichu', 'cleffa', 'igglybuff', 'togepi', 'togetic', 'natu', 'xatu', 'mareep', 'flaaffy', 'ampharos', 'bellossom', 'marill', 'azumarill', 'sudowoodo', 'politoed', 'hoppip', 'skiploom', 'jumpluff', 'aipom', 'sunkern', 'sunflora', 'yanma', 'wooper', 'quagsire', 'espeon', 'umbreon', 'murkrow', 'slowking', 'misdreavus', 'unown', 'wobbuffet', 'girafarig', 'pineco', 'forretress', 'dunsparce', 'gligar', 'steelix', 'snubbull', 'granbull', 'qwilfish', 'scizor', 'shuckle', 'heracross', 'sneasel', 'teddiursa', 'ursaring', 'slugma', 'magcargo', 'swinub', 'piloswine', 'corsola', 'remoraid', 'octillery', 'delibird', 'mantine', 'skarmory', 'houndour', 'houndoom', 'kingdra', 'phanpy', 'donphan', 'porygon2', 'stantler', 'smeargle', 'tyrogue', 'hitmontop', 'smoochum', 'elekid', 'magby', 'miltank', 'blissey', 'raikou', 'entei', 'suicune', 'larvitar', 'pupitar', 'tyranitar', 'lugia', 'ho-oh', 'celebi', 'treecko', 'grovyle', 'sceptile', 'torchic', 'combusken', 'blaziken', 'mudkip', 'marshtomp', 'swampert', 'poochyena', 'mightyena', 'zigzagoon', 'linoone', 'wurmple', 'silcoon', 'beautifly', 'cascoon', 'dustox', 'lotad', 'lombre', 'ludicolo', 'seedot', 'nuzleaf', 'shiftry', 'taillow', 'swellow', 'wingull', 'pelipper', 'ralts', 'kirlia', 'gardevoir', 'surskit', 'masquerain', 'shroomish', 'breloom', 'slakoth', 'vigoroth', 'slaking', 'nincada', 'ninjask', 'shedinja', 'whismur', 'loudred', 'exploud', 'makuhita', 'hariyama', 'azurill', 'nosepass', 'skitty', 'delcatty', 'sableye', 'mawile', 'aron', 'lairon', 'aggron', 'meditite', 'medicham', 'electrike', 'manectric', 'plusle', 'minun', 'volbeat', 'illumise', 'roselia', 'gulpin', 'swalot', 'carvanha', 'sharpedo', 'wailmer', 'wailord', 'numel', 'camerupt', 'torkoal', 'spoink', 'grumpig', 'spinda', 'trapinch', 'vibrava', 'flygon', 'cacnea', 'cacturne', 'swablu', 'altaria', 'zangoose', 'seviper', 'lunatone', 'solrock', 'barboach', 'whiscash', 'corphish', 'crawdaunt', 'baltoy', 'claydol', 'lileep', 'cradily', 'anorith', 'armaldo', 'feebas', 'milotic', 'castform', 'kecleon', 'shuppet', 'banette', 'duskull', 'dusclops', 'tropius', 'chimecho', 'absol', 'wynaut', 'snorunt', 'glalie', 'spheal', 'sealeo', 'walrein', 'clamperl', 'huntail', 'gorebyss', 'relicanth', 'luvdisc', 'bagon', 'shelgon', 'salamence', 'beldum', 'metang', 'metagross', 'regirock', 'regice', 'registeel', 'latias', 'latios', 'kyogre', 'groudon', 'rayquaza', 'jirachi', 'deoxys']
     colors=[('红色',243,82,82),('蓝色',148,219,238),('绿色',170,209,94),('黄色',255,255,153),('紫色',197,150,189),('粉红色',255,221,255),('褐色',204,153,102),('黑色',187,187,187),('灰色',238,238,238),('白色',255,255,255)]
     values=[('一般',187,187,170),('格斗',187,85,68),('飞行',129,185,199),('毒',170,85,153),('地面',221,187,85),('岩石',187,170,102),('虫',170,187,34),('幽灵',142,142,187),('钢',170,170,187),('火',255,68,34),('水',51,153,255),('草',119,204,85),('电',255,204,51),('超能力',255,85,153),('冰',119,221,245),('龙',179,102,238),('恶',119,85,68),('妖精',255,170,255)]
 
@@ -113,7 +156,7 @@ def main(lcd_rotation=0):
         key2 = GPIO(GPIO.GPIOHS2,GPIO.IN,GPIO.PULL_UP)
         key3 = GPIO(GPIO.GPIOHS3,GPIO.IN,GPIO.PULL_UP)
 
-        flag=-1
+
         special_alpha=256
         special_flag1=0
         special_flag2=0
@@ -126,14 +169,13 @@ def main(lcd_rotation=0):
         read_flag2=0
         read_init_flag2=0
         bgm_flag=0
-        change_flag1=0
-        change_flag2=0
+
         linkname=''
         gen=0
         gif_flag=0
         x=''
-        random_flag=0
-        form_flag=0
+
+
         form_show_flag=0
         form_num=0
         #menu_draw_flag=True
@@ -143,7 +185,7 @@ def main(lcd_rotation=0):
         key_chosen=20
         input_text = ""
         pinyin_res_count=0
-        choose_flag=0
+
         choose_pokemon=0
         cry_num=0
 
@@ -159,16 +201,17 @@ def main(lcd_rotation=0):
 
             current_key_state = key.value()
             current_key_state1 = key1.value()
-            current_key_state4 = key4.value()
             current_key_state2 = key2.value()
             current_key_state3 = key3.value()
+            current_key_state4 = key4.value()
 
 
-            if flag==-1 and invert_flag and change_flag1==0 and change_flag2==0 and random_flag==0 and form_flag==0 and choose_flag==0:
+
+            if (get_screen() == STATE_MENU) and (app_state & INVERT_MASK) and (app_state & OPS_MASK == 0):
                 canvas1.clear()
                 gc.collect()
                 utime.sleep_ms(50)
-                invert_flag=False
+                app_state &= ~INVERT_MASK
 
                 # 绘制图像
                 gc.collect()
@@ -197,7 +240,7 @@ def main(lcd_rotation=0):
 
                 lcd.display(canvas1)
 
-            if flag==-2 and key_chosen_flag:
+            if (get_screen() == STATE_INPUT) and key_chosen_flag:
                 key_chosen_flag=False
                 canvas1.clear()
 
@@ -353,7 +396,7 @@ def main(lcd_rotation=0):
                 gc.collect()
                 lcd.display(canvas1)
 
-            if flag==1 and change_flag1==0 and change_flag2==0 and random_flag==0 and form_flag==0 and choose_flag==0:
+            if (get_screen() == STATE_CAMERA) and (app_state & OPS_MASK == 0):
                 sensor.run(1)
                 canvas1.clear()
 
@@ -364,17 +407,18 @@ def main(lcd_rotation=0):
                 canvas1.draw_string(58, 224,"Press Green Button To Broswe Randomly", color=(200, 200, 200), scale=1)
                 lcd.display(canvas1)
 
-            if (current_key_state == 0 and last_key_state == 1) or change_flag1==1 or change_flag2==1 or random_flag==1 or form_flag==1 or choose_flag==1:
-                #print((current_key_state == 0 and last_key_state == 1),change_flag1,change_flag2,random_flag,form_flag)
-                if flag==-1:
+            if (current_key_state == 0 and last_key_state == 1) or (app_state & OPS_MASK != 0):
+                current_screen = get_screen()
+
+                if current_screen == STATE_MENU:
                     if menu_collect==1:
-                        flag=1
+                        set_screen(STATE_CAMERA)
                     elif menu_collect==2:
-                        flag=-2
+                        set_screen(STATE_INPUT)
 
                     cry_num=0
                     chosen_color=0
-                    invert_flag=False
+                    app_state &= ~(OPS_MASK | INVERT_MASK)
                     draw_tim.stop()
 
                     special_alpha=256
@@ -396,12 +440,12 @@ def main(lcd_rotation=0):
                     read_init_flag0=0
                     read_init_flag2=0
 
-                elif flag==-2:
+                elif  current_screen == STATE_INPUT:
                     utime.sleep_ms(50)
                     key_chosen_flag=True
                     if key_chosen==20:
-                        flag=1
-                        random_flag=1
+                        set_screen(STATE_CAMERA)
+                        set_operation(OP_RANDOM)
                     elif key_chosen==28:
                         input_text=input_text[:-1]
                     elif key_chosen>=1:
@@ -411,12 +455,12 @@ def main(lcd_rotation=0):
                             else:
                                 input_text += "QWERTYUIOPASDFGHJKLZXCVBNM"[key_chosen-2]
                     elif key_chosen<0:
-                        flag=0
-                        choose_flag=1
+                        set_screen(STATE_DETAIL)
+                        set_operation(OP_CHOOSE)
 
-                elif flag==0 and change_flag1==0 and change_flag2==0 and random_flag==0 and form_flag==0 and choose_flag==0:
-                    flag=-1
-                    invert_flag=True
+                elif current_screen == STATE_DETAIL:
+                    set_screen(STATE_MENU)
+                    app_state &= ~(OPS_MASK | INVERT_MASK)
                     draw_tim.start()
                     cry_num=0
                     special_alpha=256
@@ -439,8 +483,8 @@ def main(lcd_rotation=0):
                     read_init_flag0=0
                     read_init_flag2=0
 
-                elif flag==1 or change_flag1==1 or change_flag2==1 or random_flag==1 or form_flag==1 or choose_flag==1:
-                    flag=0
+                elif current_screen == STATE_CAMERA:
+                    set_screen(STATE_DETAIL)
                     cry_num=0
                     special_alpha=256
                     special_flag1=0
@@ -463,7 +507,9 @@ def main(lcd_rotation=0):
                     read_init_flag1=0
                     read_init_flag2=0
 
-                    if change_flag1==0 and change_flag2==0 and random_flag==0 and form_flag==0 and choose_flag==0:
+                    ops = app_state & OPS_MASK
+
+                    if ops == 0:
                         read_init_flag0=1
                         form_num=0
 
@@ -503,34 +549,34 @@ def main(lcd_rotation=0):
 
                         gc.collect()
 
-                    elif change_flag1==1:
-                        change_flag1=0
+                    elif has_operation(OP_PREV):
                         form_num=0
-                        k=(pokemon_linkname.index(linkname)-1)%1025+1
+                        k=(pokemon_linkname.index(linkname)-1)%386+1
                         x=str(k)
                         x='0'*(4-len(x))+x
                         linkname=pokemon_linkname[k-1]
+                        clear_operation(OP_PREV)
 
-                    elif change_flag2==1:
-                        change_flag2=0
+                    elif has_operation(OP_NEXT):
                         form_num=0
-                        k=(pokemon_linkname.index(linkname)+1)%1025+1
+                        k=(pokemon_linkname.index(linkname)+1)%386+1
                         x=str(k)
                         x='0'*(4-len(x))+x
                         linkname=pokemon_linkname[k-1]
+                        clear_operation(OP_NEXT)
 
-                    elif random_flag==1:
-                        random_flag=0
+                    elif has_operation(OP_RANDOM):
                         form_num=0
                         current_time = utime.ticks_ms()
-                        k = (current_time % 1025) + 1
+                        k = (current_time % 386) + 1
 
                         x=str(k)
                         x='0'*(4-len(x))+x
                         linkname=pokemon_linkname[k-1]
+                        clear_operation(OP_RANDOM)
 
-                    elif choose_flag==1:
-                        choose_flag=0
+                    elif has_operation(OP_CHOOSE):
+
                         key_chosen=20
                         input_text = ""
                         k=choose_pokemon+1
@@ -538,6 +584,7 @@ def main(lcd_rotation=0):
                         x=str(k)
                         x='0'*(4-len(x))+x
                         linkname=pokemon_linkname[k-1]
+                        clear_operation(OP_CHOOSE)
 
                     if k<=151:
                         gen=1
@@ -577,8 +624,8 @@ def main(lcd_rotation=0):
                     del data
                     gc.collect()
 
-                    if form_flag==1:
-                        form_flag=0
+                    if has_operation(OP_FORM):
+                        clear_operation(OP_FORM)
                         form_num+=1
                         form_path="/sd/gen"+str(gen)+"/"+x+linkname+"/form/form_info/"+str(form_num)+".txt"
                         try:
@@ -1450,11 +1497,11 @@ def main(lcd_rotation=0):
                     canvas1.draw_string(220,5,"%s %s"%(pokename[0],pokename[3]),scale=1,color=(255, 255, 255))
 
                     now_name=int(pokename[0].split('#')[-1])
-                    canvas1.draw_string(136,226,"0"*(4-len(str(now_name)))+"%s/1025"%(str(now_name)),scale=1,color=(255, 255, 255))
+                    canvas1.draw_string(136,226,"0"*(4-len(str(now_name)))+"%s/386"%(str(now_name)),scale=1,color=(255, 255, 255))
                     if now_name==1:
-                        pre_name=1025
+                        pre_name=386
                         next_name=now_name+1
-                    elif now_name==1025:
+                    elif now_name==386:
                         pre_name=now_name-1
                         next_name=1
                     else:
@@ -1606,7 +1653,7 @@ def main(lcd_rotation=0):
 
                     gc.collect()
 
-            if flag==0 and time_flag==True:
+            if (get_screen() == STATE_DETAIL) and time_flag==True:
 
                 time_flag=False
                 canvas2.clear()
@@ -1786,20 +1833,22 @@ def main(lcd_rotation=0):
 
 
             if current_key_state1 == 0 and last_key_state1 == 1:
-                if flag==0:
+                current_screen = get_screen()
+
+                if current_screen == STATE_DETAIL:
                     read_flag0=0
                     read_flag2=0
                     read_init_flag0=0
                     read_init_flag1=0
                     read_init_flag2=1
-                elif flag==-1:
+                elif current_screen == STATE_MENU:
                     cry_num=0
                     read_flag0=0
                     read_flag2=0
                     read_init_flag0=0
                     read_init_flag1=1
                     read_init_flag2=0
-                elif flag==-2:
+                elif current_screen == STATE_INPUT:
                     key_chosen_flag=True
                     if pinyin_res_count==0:
                         if key_chosen<=1:
@@ -1827,7 +1876,9 @@ def main(lcd_rotation=0):
                             key_chosen=key_chosen-10
 
             if current_key_state4 == 0 and last_key_state4 == 1:
-                if flag==0:
+
+                current_screen = get_screen()
+                if current_screen == STATE_DETAIL :
                     cry_num=0
                     read_flag0=0
                     read_flag1=0
@@ -1836,9 +1887,9 @@ def main(lcd_rotation=0):
                     read_init_flag1=0
                     read_init_flag2=0
 
-                    form_flag=1
+                    set_operation(OP_FORM)
 
-                elif flag==1:
+                elif current_screen == STATE_CAMERA:
                     cry_num=0
                     read_flag0=0
                     read_flag1=0
@@ -1847,7 +1898,7 @@ def main(lcd_rotation=0):
                     read_init_flag1=0
                     read_init_flag2=0
 
-                elif flag==-2:
+                elif current_screen == STATE_INPUT:
                     key_chosen_flag=True
                     if pinyin_res_count==0:
                         if key_chosen<=10:
@@ -1877,21 +1928,23 @@ def main(lcd_rotation=0):
                             key_chosen=-1
 
             if current_key_state2 == 0 and last_key_state2 == 1:
-                if flag==-1:
+                current_screen = get_screen()
+
+                if current_screen == STATE_MENU:
                     chosen_color=0
                     menu_collect=1
-                elif flag==0:
+                elif current_screen == STATE_DETAIL:
                     cry_num=0
-                    change_flag1=1
+                    set_operation(OP_PREV)
                     read_flag0=0
                     read_flag1=0
                     read_flag2=0
                     read_init_flag0=0
                     read_init_flag1=0
                     read_init_flag2=0
-                elif flag==1:
+                elif current_screen == STATE_CAMERA:
                     pass
-                elif flag==-2:
+                elif current_screen == STATE_INPUT:
                     key_chosen_flag=True
                     if pinyin_res_count==0:
                         if key_chosen==1:
@@ -1915,22 +1968,24 @@ def main(lcd_rotation=0):
                             key_chosen=key_chosen-1
 
             if current_key_state3 == 0 and last_key_state3 == 1:
-                if flag==-1:
+
+                current_screen = get_screen()
+                if current_screen == STATE_MENU:
                     chosen_color=0
                     menu_collect=2
 
-                elif flag==0:
+                elif current_screen == STATE_DETAIL:
                     cry_num=0
-                    change_flag2=1
+                    set_operation(OP_NEXT)
                     read_flag0=0
                     read_flag1=0
                     read_flag2=0
                     read_init_flag0=0
                     read_init_flag1=0
                     read_init_flag2=0
-                elif flag==1:
+                elif current_screen == STATE_CAMERA:
                     pass
-                elif flag==-2:
+                elif current_screen == STATE_INPUT:
                     key_chosen_flag=True
                     if pinyin_res_count==0:
                         if key_chosen==10:
