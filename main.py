@@ -51,7 +51,7 @@ def clear_operation(op):
 
 def set_operation(op):
     global app_state
-    app_state |= op
+    app_state |= (app_state & ~OPS_MASK) | (op & OPS_MASK)
 
 
 
@@ -407,6 +407,8 @@ def main(lcd_rotation=0):
                 canvas1.draw_string(58, 224,"Press Green Button To Broswe Randomly", color=(200, 200, 200), scale=1)
                 lcd.display(canvas1)
 
+
+#此处向下为按键处理部分，向上为屏幕刷新部分
             if (current_key_state == 0 and last_key_state == 1) or (app_state & OPS_MASK != 0):
                 current_screen = get_screen()
 
@@ -458,7 +460,7 @@ def main(lcd_rotation=0):
                         set_screen(STATE_DETAIL)
                         set_operation(OP_CHOOSE)
 
-                elif current_screen == STATE_DETAIL:
+                elif current_screen == STATE_DETAIL and (app_state & OPS_MASK == 0):
                     set_screen(STATE_MENU)
                     app_state &= ~(OPS_MASK | INVERT_MASK)
                     draw_tim.start()
@@ -483,7 +485,7 @@ def main(lcd_rotation=0):
                     read_init_flag0=0
                     read_init_flag2=0
 
-                elif current_screen == STATE_CAMERA:
+                elif current_screen == STATE_CAMERA or has_operation(OP_PREV) or has_operation(OP_NEXT) or has_operation(OP_RANDOM) or has_operation(OP_CHOOSE) or has_operation(OP_FORM):
                     set_screen(STATE_DETAIL)
                     cry_num=0
                     special_alpha=256
@@ -1758,7 +1760,7 @@ def main(lcd_rotation=0):
                     wav_dev.set_sample_rate(wav_info[1])
 
                 elif read_flag0==1 and read_flag2==0:
-                    if flag==0:
+                    if get_screen() == STATE_DETAIL:
                         ret = player.play()
                         if ret==0:
                             read_flag2=1
@@ -1770,7 +1772,7 @@ def main(lcd_rotation=0):
                         gc.collect()
 
                 elif read_flag0==0 and read_flag2==1:
-                    if flag==0:
+                    if get_screen() == STATE_DETAIL:
                         ret = player.play()
                         if ret==0:
                             read_flag2=0
