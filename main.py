@@ -34,6 +34,23 @@ OPS_MASK = 0b11111000       # 高5位：操作标志
 app_state = STATE_MENU  # 初始化
 time_flag = True
 
+
+#原本的read_flag修改为更直观的状态机
+AUDIO_IDLE = 0
+AUDIO_PLAYING_PC = 1    #正在播放pc
+AUDIO_PLAYING_INFO = 2  #正在播放介绍
+AUDIO_PLAYING_CRY = 3   #正在播放叫声
+AUDIO_PLAYING_BGM = 4   #正在播放背景音乐
+
+#触发
+AUDIO_TRIGGER_NONE = 0      #没有触发
+AUDIO_TRIGGER_ENTER = 1     #进入详情
+AUDIO_TRIGGER_BGM = 2       #背景音乐
+AUDIO_TRIGGER_CRY = 3       #叫声/介绍
+
+audio_state = AUDIO_IDLE    #当前在播什么
+audio_trigger = AUDIO_TRIGGER_NONE  #被要求播什么
+
 # 辅助函数
 def get_screen():
     return app_state & SCREEN_MASK
@@ -104,6 +121,8 @@ def main(lcd_rotation=0):
     global time_flag
     global app_state
     app_state = STATE_MENU
+    global audio_state
+    global audio_trigger
     input_size = (224, 224)
 
     sensor.reset()
@@ -162,18 +181,20 @@ def main(lcd_rotation=0):
         special_flag2=0
         alpha_direct=1
         current_frame = 0
-        read_flag0=0
-        read_init_flag0=0
-        read_flag1=0
-        read_init_flag1=0
-        read_flag2=0
-        read_init_flag2=0
+
+
+
+        #一个状态一个触发，用这俩变量在主循环里控制音频播放
+        audio_state = AUDIO_IDLE    #当前在播什么
+        audio_trigger = AUDIO_TRIGGER_NONE  #被要求播什么
+
         bgm_flag=0
 
         linkname=''
         gen=0
         gif_flag=0
         x=''
+        player = None
 
 
         form_show_flag=0
@@ -206,7 +227,7 @@ def main(lcd_rotation=0):
             current_key_state4 = key4.value()
 
 
-
+            #绘制首页图像
             if (get_screen() == STATE_MENU) and (app_state & INVERT_MASK) and (app_state & OPS_MASK == 0):
                 canvas1.clear()
                 gc.collect()
@@ -240,6 +261,7 @@ def main(lcd_rotation=0):
 
                 lcd.display(canvas1)
 
+            #绘制输入界面
             if (get_screen() == STATE_INPUT) and key_chosen_flag:
                 key_chosen_flag=False
                 canvas1.clear()
@@ -408,10 +430,11 @@ def main(lcd_rotation=0):
                 lcd.display(canvas1)
 
 
-#此处向下为按键处理部分，向上为屏幕刷新部分
+#此处向下为按键处理部分，向上为绘制屏幕部分
             if (current_key_state == 0 and last_key_state == 1) or (app_state & OPS_MASK != 0):
                 current_screen = get_screen()
 
+                #菜单界面
                 if current_screen == STATE_MENU:
                     if menu_collect==1:
                         set_screen(STATE_CAMERA)
@@ -437,11 +460,9 @@ def main(lcd_rotation=0):
                     time_flag=False
                     tim.stop()
 
-                    read_flag0=0
-                    read_flag2=0
-                    read_init_flag0=0
-                    read_init_flag2=0
 
+
+                #输入界面
                 elif  current_screen == STATE_INPUT:
                     utime.sleep_ms(50)
                     key_chosen_flag=True
@@ -460,6 +481,7 @@ def main(lcd_rotation=0):
                         set_screen(STATE_DETAIL)
                         set_operation(OP_CHOOSE)
 
+                #详情界面且无操作
                 elif current_screen == STATE_DETAIL and (app_state & OPS_MASK == 0):
                     set_screen(STATE_MENU)
                     app_state &= ~(OPS_MASK | INVERT_MASK)
@@ -480,10 +502,10 @@ def main(lcd_rotation=0):
                     time_flag=False
                     tim.stop()
 
-                    read_flag0=0
-                    read_flag2=0
-                    read_init_flag0=0
-                    read_init_flag2=0
+                    #不播放任何音频
+                    audio_state = AUDIO_IDLE
+                    audio_trigger = AUDIO_TRIGGER_NONE
+
 
                 elif current_screen == STATE_CAMERA or has_operation(OP_PREV) or has_operation(OP_NEXT) or has_operation(OP_RANDOM) or has_operation(OP_CHOOSE) or has_operation(OP_FORM):
                     set_screen(STATE_DETAIL)
@@ -502,17 +524,14 @@ def main(lcd_rotation=0):
                     sensor.run(0)
                     tim.start()
 
-                    read_flag0=0
-                    read_flag1=0
-                    read_flag2=0
-                    read_init_flag0=0
-                    read_init_flag1=0
-                    read_init_flag2=0
+                    #不播放任何音频
+                    audio_state = AUDIO_IDLE
+                    audio_trigger = AUDIO_TRIGGER_NONE
 
                     ops = app_state & OPS_MASK
 
                     if ops == 0:
-                        read_init_flag0=1
+                        audio_trigger = AUDIO_TRIGGER_ENTER
                         form_num=0
 
                         gc.collect()
@@ -661,7 +680,7 @@ def main(lcd_rotation=0):
                                 form_num=0
 
 
-                    if not read_init_flag0==1:
+                    if ops != 0:
 
                         if form_num==0:
                             evo_txt="/sd/gen"+str(gen)+"/"+x+linkname+"/evolution.txt"
@@ -1738,118 +1757,95 @@ def main(lcd_rotation=0):
                     alpha_direct=1
 
 
-            if read_init_flag0==1:
-                if read_flag0==0 and read_flag2==0:
-                    read_flag0=1
-                    wav_dev = I2S(I2S.DEVICE_0)
-                    player = audio.Audio(path="/sd/pc.wav")
-                    player.volume(15)
-                    wav_info = player.play_process(wav_dev)
-                    wav_dev.channel_config(wav_dev.CHANNEL_1, I2S.TRANSMITTER, resolution=I2S.RESOLUTION_16_BIT,
-                                           cycles=I2S.SCLK_CYCLES_16, align_mode=I2S.RIGHT_JUSTIFYING_MODE)
-                    wav_dev.set_sample_rate(wav_info[1])
+            if audio_trigger != AUDIO_TRIGGER_NONE:
+                if audio_state == AUDIO_IDLE:
+                    
+                    if audio_trigger == AUDIO_TRIGGER_ENTER:
+                        wav_dev = I2S(I2S.DEVICE_0)
+                        player = audio.Audio(path="/sd/pc.wav")
+                        player.volume(15)
+                        wav_info = player.play_process(wav_dev)
+                        wav_dev.channel_config(wav_dev.CHANNEL_1, I2S.TRANSMITTER,
+                                   resolution=I2S.RESOLUTION_16_BIT,
+                                   cycles=I2S.SCLK_CYCLES_16,
+                                   align_mode=I2S.RIGHT_JUSTIFYING_MODE)
+                        wav_dev.set_sample_rate(wav_info[1])
+                        audio_state = AUDIO_PLAYING_PC      #正在播放PC
 
-                elif read_flag0==1 and read_flag2==1:
-                    read_flag0=0
-                    wav_dev = I2S(I2S.DEVICE_0)
-                    player = audio.Audio(path="/sd/gen"+str(gen)+"/"+x+linkname+"/mp3/inform.wav")
-                    player.volume(15)
-                    wav_info = player.play_process(wav_dev)
-                    wav_dev.channel_config(wav_dev.CHANNEL_1, I2S.TRANSMITTER, resolution=I2S.RESOLUTION_16_BIT,
-                                           cycles=I2S.SCLK_CYCLES_16, align_mode=I2S.RIGHT_JUSTIFYING_MODE)
-                    wav_dev.set_sample_rate(wav_info[1])
-
-                elif read_flag0==1 and read_flag2==0:
-                    if get_screen() == STATE_DETAIL:
-                        ret = player.play()
-                        if ret==0:
-                            read_flag2=1
-                            del player
-                            gc.collect()
-                    else:
-                        read_flag2=1
-                        del player
-                        gc.collect()
-
-                elif read_flag0==0 and read_flag2==1:
-                    if get_screen() == STATE_DETAIL:
-                        ret = player.play()
-                        if ret==0:
-                            read_flag2=0
-                            read_init_flag0=0
-                            del player
-                            gc.collect()
-                    else:
-                        read_flag2=0
-                        read_init_flag0=0
-                        del player
-                        gc.collect()
-
-            if read_init_flag1==1:
-                if read_flag1==0:
-                    bgm_flag=bgm_flag%9+1
-                    # wav_dev = I2S(I2S.DEVICE_0)
-                    # player = audio.Audio(path="/sd/bgm/pokemon"+str(bgm_flag)+".wav")
-                    # player.volume(10)
-                    # wav_info = player.play_process(wav_dev)
-                    # wav_dev.channel_config(wav_dev.CHANNEL_1, I2S.TRANSMITTER, resolution=I2S.RESOLUTION_16_BIT,
-                    #                        cycles=I2S.SCLK_CYCLES_16, align_mode=I2S.RIGHT_JUSTIFYING_MODE)
-                    # wav_dev.set_sample_rate(wav_info[1])
-                    read_flag1=1
-                    read_flag2=0
-
-                elif read_flag1==1:
-                    ret = player.play()
-                    if ret==0:
-                        read_flag1=0
-                        read_init_flag1=0
-                        del player
-                        gc.collect()
-
-            if read_init_flag2==1:
-                if read_flag2==0:
-                    wav_dev = I2S(I2S.DEVICE_0)
-                    if cry_num==0:
-                        cry_num=1
-                        player = audio.Audio(path="/sd/gen"+str(gen)+"/"+x+linkname+"/mp3/cry.wav")
+                    elif audio_trigger == AUDIO_TRIGGER_BGM:
+                        wav_dev = I2S(I2S.DEVICE_0)
+                        bgm_flag=bgm_flag%9+1
+                        player = audio.Audio(path="/sd/bgm/pokemon"+str(bgm_flag)+".wav")
                         player.volume(10)
-                    elif cry_num==1:
-                        cry_num=0
+                        wav_info = player.play_process(wav_dev)
+                        wav_dev.channel_config(wav_dev.CHANNEL_1, I2S.TRANSMITTER,
+                                   resolution=I2S.RESOLUTION_16_BIT,
+                                   cycles=I2S.SCLK_CYCLES_16,
+                                   align_mode=I2S.RIGHT_JUSTIFYING_MODE)
+                        wav_dev.set_sample_rate(wav_info[1])
+                        audio_state = AUDIO_PLAYING_BGM      #正在播放BGM
+
+                    elif audio_trigger == AUDIO_TRIGGER_CRY:
+                        wav_dev = I2S(I2S.DEVICE_0)
+                        if cry_num == 0:
+                            player = audio.Audio(path="/sd/gen"+str(gen)+"/"+x+linkname+"/mp3/inform.wav")
+                            player.volume(15)
+                            audio_state = AUDIO_PLAYING_INFO  # 正在播放介绍
+                        else:
+                            player = audio.Audio(path="/sd/gen"+str(gen)+"/"+x+linkname+"/mp3/cry.wav")
+                            player.volume(10)
+                            audio_state = AUDIO_PLAYING_CRY   # 正在播放叫声
+
+                        wav_info = player.play_process(wav_dev)
+                        wav_dev.channel_config(wav_dev.CHANNEL_1, I2S.TRANSMITTER,
+                                   resolution=I2S.RESOLUTION_16_BIT,
+                                   cycles=I2S.SCLK_CYCLES_16,
+                                   align_mode=I2S.RIGHT_JUSTIFYING_MODE)
+                        wav_dev.set_sample_rate(wav_info[1])
+
+                # 每次循环都推进播放（只要 player 存在），避免在 audio_trigger 存在时停止轮询
+                if player is not None:
+                    try:
+                        ret = player.play()
+                    except Exception:
+                        ret = -1
+                else:
+                    ret = -1
+
+                if ret == 0:
+                    if audio_state == AUDIO_PLAYING_PC:
+                        # 播放完 PC，开始播放介绍
+                        wav_dev = I2S(I2S.DEVICE_0)
                         player = audio.Audio(path="/sd/gen"+str(gen)+"/"+x+linkname+"/mp3/inform.wav")
                         player.volume(15)
+                        wav_info = player.play_process(wav_dev)
+                        wav_dev.channel_config(wav_dev.CHANNEL_1, I2S.TRANSMITTER,
+                                       resolution=I2S.RESOLUTION_16_BIT,
+                                       cycles=I2S.SCLK_CYCLES_16,
+                                       align_mode=I2S.RIGHT_JUSTIFYING_MODE)
+                        wav_dev.set_sample_rate(wav_info[1])
+                        audio_state = AUDIO_PLAYING_INFO
+                    else:
+                        # 播放结束，清理状态与触发器
+                        audio_state = AUDIO_IDLE
+                        audio_trigger = AUDIO_TRIGGER_NONE
 
-                    wav_info = player.play_process(wav_dev)
-                    wav_dev.channel_config(wav_dev.CHANNEL_1, I2S.TRANSMITTER, resolution=I2S.RESOLUTION_16_BIT,
-                                           cycles=I2S.SCLK_CYCLES_16, align_mode=I2S.RIGHT_JUSTIFYING_MODE)
-                    wav_dev.set_sample_rate(wav_info[1])
-                    read_flag1=0
-                    read_flag2=1
 
-                elif read_flag2==1:
-                    ret = player.play()
-                    if ret==0:
-                        read_flag2=0
-                        read_init_flag2=0
-                        del player
-                        gc.collect()
+
+
 
 
             if current_key_state1 == 0 and last_key_state1 == 1:
                 current_screen = get_screen()
 
                 if current_screen == STATE_DETAIL:
-                    read_flag0=0
-                    read_flag2=0
-                    read_init_flag0=0
-                    read_init_flag1=0
-                    read_init_flag2=1
+
+                    audio_trigger = AUDIO_TRIGGER_CRY
+
                 elif current_screen == STATE_MENU:
                     cry_num=0
-                    read_flag0=0
-                    read_flag2=0
-                    read_init_flag0=0
-                    read_init_flag1=1
-                    read_init_flag2=0
+                    audio_trigger = AUDIO_TRIGGER_BGM
+
                 elif current_screen == STATE_INPUT:
                     key_chosen_flag=True
                     if pinyin_res_count==0:
@@ -1882,23 +1878,38 @@ def main(lcd_rotation=0):
                 current_screen = get_screen()
                 if current_screen == STATE_DETAIL :
                     cry_num=0
-                    read_flag0=0
-                    read_flag1=0
-                    read_flag2=0
-                    read_init_flag0=0
-                    read_init_flag1=0
-                    read_init_flag2=0
+
+                    if audio_state != AUDIO_IDLE:
+                        audio_state = AUDIO_IDLE
+                        if player is not None:
+                            try:
+                                player.stop()
+                            except Exception:
+                                pass
+                            try:
+                                del player
+                            except Exception:
+                                pass
+                            player = None
+                        audio_trigger = AUDIO_TRIGGER_NONE
 
                     set_operation(OP_FORM)
 
                 elif current_screen == STATE_CAMERA:
                     cry_num=0
-                    read_flag0=0
-                    read_flag1=0
-                    read_flag2=0
-                    read_init_flag0=0
-                    read_init_flag1=0
-                    read_init_flag2=0
+                    if audio_state != AUDIO_IDLE:
+                        audio_state = AUDIO_IDLE
+                        if player is not None:
+                            try:
+                                player.stop()
+                            except Exception:
+                                pass
+                            try:
+                                del player
+                            except Exception:
+                                pass
+                            player = None
+                        audio_trigger = AUDIO_TRIGGER_NONE
 
                 elif current_screen == STATE_INPUT:
                     key_chosen_flag=True
@@ -1938,12 +1949,21 @@ def main(lcd_rotation=0):
                 elif current_screen == STATE_DETAIL:
                     cry_num=0
                     set_operation(OP_PREV)
-                    read_flag0=0
-                    read_flag1=0
-                    read_flag2=0
-                    read_init_flag0=0
-                    read_init_flag1=0
-                    read_init_flag2=0
+
+                    if audio_state != AUDIO_IDLE:
+                        audio_state = AUDIO_IDLE
+                        if player is not None:
+                            try:
+                                player.stop()
+                            except Exception:
+                                pass
+                            try:
+                                del player
+                            except Exception:
+                                pass
+                            player = None
+                        audio_trigger = AUDIO_TRIGGER_NONE
+
                 elif current_screen == STATE_CAMERA:
                     pass
                 elif current_screen == STATE_INPUT:
@@ -1978,13 +1998,22 @@ def main(lcd_rotation=0):
 
                 elif current_screen == STATE_DETAIL:
                     cry_num=0
+
                     set_operation(OP_NEXT)
-                    read_flag0=0
-                    read_flag1=0
-                    read_flag2=0
-                    read_init_flag0=0
-                    read_init_flag1=0
-                    read_init_flag2=0
+                    if audio_state != AUDIO_IDLE:
+                        audio_state = AUDIO_IDLE
+                        if player is not None:
+                            try:
+                                player.stop()
+                            except Exception:
+                                pass
+                            try:
+                                del player
+                            except Exception:
+                                pass
+                            player = None
+                        audio_trigger = AUDIO_TRIGGER_NONE
+
                 elif current_screen == STATE_CAMERA:
                     pass
                 elif current_screen == STATE_INPUT:
