@@ -28,6 +28,8 @@ OP_CHOOSE = 0b10000000
 SCREEN_MASK = 0b00000011    # 低2位：屏幕状态
 INVERT_MASK = 0b00000100    # 第2位：闪烁标志
 OPS_MASK = 0b11111000       # 高5位：操作标志
+POKEDEX_SIZE = 386
+KEYBOARD_LETTERS = "QWERTYUIOPASDFGHJKLZXCVBNM"
 
 
 # 单个状态变量
@@ -69,6 +71,39 @@ def clear_operation(op):
 def set_operation(op):
     global app_state
     app_state |= (app_state & ~OPS_MASK) | (op & OPS_MASK)
+
+
+def clear_canvases(*canvases):
+    for canvas in canvases:
+        canvas.clear()
+
+
+def reset_detail_animation_state():
+    return 256, 0, 0, 1, 0, 0
+
+
+def pokemon_number_to_id(number):
+    return "{:04d}".format(number)
+
+
+def get_generation(number):
+    if number <= 151:
+        return 1
+    if number <= 251:
+        return 2
+    if number <= 386:
+        return 3
+    if number <= 493:
+        return 4
+    if number <= 649:
+        return 5
+    if number <= 721:
+        return 6
+    if number <= 809:
+        return 7
+    if number <= 905:
+        return 8
+    return 9
 
 
 
@@ -446,16 +481,8 @@ def main(lcd_rotation=0):
                     app_state &= ~(OPS_MASK | INVERT_MASK)
                     draw_tim.stop()
 
-                    special_alpha=256
-                    special_flag1=0
-                    special_flag2=0
-                    alpha_direct=1
-                    gif_flag=0
-                    current_frame = 0
-                    canvas1.clear()
-                    canvas2.clear()
-                    canvas3.clear()
-                    canvas4.clear()
+                    special_alpha, special_flag1, special_flag2, alpha_direct, gif_flag, current_frame = reset_detail_animation_state()
+                    clear_canvases(canvas1, canvas2, canvas3, canvas4)
 
                     time_flag=False
                     tim.stop()
@@ -474,9 +501,9 @@ def main(lcd_rotation=0):
                     elif key_chosen>=1:
                         if len(input_text)<=4:
                             if key_chosen<=19:
-                                input_text += "QWERTYUIOPASDFGHJKLZXCVBNM"[key_chosen-1]
+                                input_text += KEYBOARD_LETTERS[key_chosen-1]
                             else:
-                                input_text += "QWERTYUIOPASDFGHJKLZXCVBNM"[key_chosen-2]
+                                input_text += KEYBOARD_LETTERS[key_chosen-2]
                     elif key_chosen<0:
                         set_screen(STATE_DETAIL)
                         set_operation(OP_CHOOSE)
@@ -487,16 +514,8 @@ def main(lcd_rotation=0):
                     app_state &= ~(OPS_MASK | INVERT_MASK)
                     draw_tim.start()
                     cry_num=0
-                    special_alpha=256
-                    special_flag1=0
-                    special_flag2=0
-                    alpha_direct=1
-                    gif_flag=0
-                    current_frame = 0
-                    canvas1.clear()
-                    canvas2.clear()
-                    canvas3.clear()
-                    canvas4.clear()
+                    special_alpha, special_flag1, special_flag2, alpha_direct, gif_flag, current_frame = reset_detail_animation_state()
+                    clear_canvases(canvas1, canvas2, canvas3, canvas4)
 
 
                     time_flag=False
@@ -510,16 +529,8 @@ def main(lcd_rotation=0):
                 elif current_screen == STATE_CAMERA or has_operation(OP_PREV) or has_operation(OP_NEXT) or has_operation(OP_RANDOM) or has_operation(OP_CHOOSE) or has_operation(OP_FORM):
                     set_screen(STATE_DETAIL)
                     cry_num=0
-                    special_alpha=256
-                    special_flag1=0
-                    special_flag2=0
-                    alpha_direct=1
-                    gif_flag=0
-                    current_frame = 0
-                    canvas1.clear()
-                    canvas2.clear()
-                    canvas3.clear()
-                    canvas4.clear()
+                    special_alpha, special_flag1, special_flag2, alpha_direct, gif_flag, current_frame = reset_detail_animation_state()
+                    clear_canvases(canvas1, canvas2, canvas3, canvas4)
 
                     sensor.run(0)
                     tim.start()
@@ -547,8 +558,7 @@ def main(lcd_rotation=0):
 
 
                         k=pokemon_linkname.index(max_pokemon_name)+1
-                        x=str(k)
-                        x='0'*(4-len(x))+x
+                        x = pokemon_number_to_id(k)
                         linkname=max_pokemon_name
 
                         canvas1.draw_image(img, 5, 5, 0.5, 0.5, alpha=256)
@@ -572,27 +582,24 @@ def main(lcd_rotation=0):
 
                     elif has_operation(OP_PREV):
                         form_num=0
-                        k=(pokemon_linkname.index(linkname)-1)%386+1
-                        x=str(k)
-                        x='0'*(4-len(x))+x
+                        k=(pokemon_linkname.index(linkname)-1)%POKEDEX_SIZE+1
+                        x = pokemon_number_to_id(k)
                         linkname=pokemon_linkname[k-1]
                         clear_operation(OP_PREV)
 
                     elif has_operation(OP_NEXT):
                         form_num=0
-                        k=(pokemon_linkname.index(linkname)+1)%386+1
-                        x=str(k)
-                        x='0'*(4-len(x))+x
+                        k=(pokemon_linkname.index(linkname)+1)%POKEDEX_SIZE+1
+                        x = pokemon_number_to_id(k)
                         linkname=pokemon_linkname[k-1]
                         clear_operation(OP_NEXT)
 
                     elif has_operation(OP_RANDOM):
                         form_num=0
                         current_time = utime.ticks_ms()
-                        k = (current_time % 386) + 1
+                        k = (current_time % POKEDEX_SIZE) + 1
 
-                        x=str(k)
-                        x='0'*(4-len(x))+x
+                        x = pokemon_number_to_id(k)
                         linkname=pokemon_linkname[k-1]
                         clear_operation(OP_RANDOM)
 
@@ -602,29 +609,11 @@ def main(lcd_rotation=0):
                         input_text = ""
                         k=choose_pokemon+1
 
-                        x=str(k)
-                        x='0'*(4-len(x))+x
+                        x = pokemon_number_to_id(k)
                         linkname=pokemon_linkname[k-1]
                         clear_operation(OP_CHOOSE)
 
-                    if k<=151:
-                        gen=1
-                    elif k<=251:
-                        gen=2
-                    elif k<=386:
-                        gen=3
-                    elif k<=493:
-                        gen=4
-                    elif k<=649:
-                        gen=5
-                    elif k<=721:
-                        gen=6
-                    elif k<=809:
-                        gen=7
-                    elif k<=905:
-                        gen=8
-                    else:
-                        gen=9
+                    gen = get_generation(k)
 
 
                     file_path="/sd/gen"+str(gen)+"/"+x+linkname+"/inform.txt"
@@ -1677,9 +1666,7 @@ def main(lcd_rotation=0):
             if (get_screen() == STATE_DETAIL) and time_flag==True:
 
                 time_flag=False
-                canvas2.clear()
-                canvas3.clear()
-                canvas4.clear()
+                clear_canvases(canvas2, canvas3, canvas4)
 
                 if gif_flag==1:
                     gc.collect()
